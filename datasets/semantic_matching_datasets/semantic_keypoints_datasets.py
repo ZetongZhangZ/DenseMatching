@@ -72,6 +72,50 @@ def random_crop(img, kps, bbox, size=(256, 256), p=0.5):
     return resized_img, resized_kps, resized_bbx
 
 
+# add for ndf
+def resize_image(img, size=(256, 256)):
+    """
+    Args:
+        img: HxWx3, numpy array
+        size:
+
+    Returns:
+    """
+    h, w = img.shape[:2]
+    resized_img = cv2.resize(img, dsize=(size[1], size[0]), interpolation=cv2.INTER_LINEAR)
+
+    return resized_img
+
+
+def random_crop_image(img, size=(256, 256), p=0.5):
+    """
+    Args:
+        img: HxWx3, numpy array
+        size:
+
+    Returns:
+
+    """
+    if random.uniform(0, 1) > p:
+        return resize_image(img, size)
+
+    h, w = img.shape[:2]
+
+    # we don't have bounding box, by default set the central region with length of 1/3 of the original
+    left = random.randint(0, int(w/3))
+    top = random.randint(0, int(h/3))
+    height = random.randint(int(2*h/3), h) - top
+    width = random.randint(int(2*w/3), w) - left
+
+    try:
+        resized_img = img[top: top + height, left: left + width]
+        resized_img = cv2.resize(resized_img, dsize=(size[1], size[0]), interpolation=cv2.INTER_LINEAR)
+    except:
+        resized_img = img
+
+    return resized_img
+
+
 class SemanticKeypointsDataset(Dataset):
     """Parent class of PFPascal, PFWillow, Caltech, and SPair"""
 
@@ -102,8 +146,14 @@ class SemanticKeypointsDataset(Dataset):
                       'Layout/large',
                       'JPEGImages',
                       'PairAnnotation',
-                      'bbox')
+                      'bbox'),
+            'ndf': (os.path.basename(root),
+                    '_pairs_ndf.csv',
+                    'images',
+                    '',
+                    'img'),
         }
+
         root = os.path.dirname(root)  # remove the last name
 
         default_conf = {
@@ -128,7 +178,7 @@ class SemanticKeypointsDataset(Dataset):
 
         # Directory path for train, val, or test splits
         base_path = os.path.join(os.path.abspath(root), self.metadata[benchmark][0])
-        if benchmark == 'pfpascal':
+        if benchmark == 'pfpascal' or benchmark == 'ndf':
             self.spt_path = os.path.join(base_path, split + self.metadata[benchmark][1])
         elif benchmark == 'spair':
             self.spt_path = os.path.join(base_path, self.metadata[benchmark][1], split + '.txt')
@@ -205,9 +255,11 @@ class SemanticKeypointsDataset(Dataset):
         batch['target_image'] = trg_numpy
 
         # Key-points (re-scaled)
-        batch['source_kps'], num_pts = self.get_points(self.src_kps, idx, batch['src_imsize_ori'])  # Nx2
-        batch['target_kps'], _ = self.get_points(self.trg_kps, idx, batch['trg_imsize_ori'])  # Nx2
-        batch['n_pts'] = torch.tensor(num_pts)
+        # modified for ndf
+        if (hasattr(self, 'annotated') and self.annotated) or (not hasattr(self, 'annotated')):
+            batch['source_kps'], num_pts = self.get_points(self.src_kps, idx, batch['src_imsize_ori'])  # Nx2
+            batch['target_kps'], _ = self.get_points(self.trg_kps, idx, batch['trg_imsize_ori'])  # Nx2
+            batch['n_pts'] = torch.tensor(num_pts)
 
         # The number of pairs in training split
         batch['datalen'] = len(self.train_data)
@@ -368,8 +420,10 @@ class SemanticKeypointsDataset(Dataset):
         batch['trg_bbox'][0] = batch['target_image'].shape[1] - batch['trg_bbox'][2]
         batch['trg_bbox'][2] = batch['target_image'].shape[1] - tmp
 
-        batch['source_kps'][:batch['n_pts'], 0] = batch['source_image'].shape[1] - batch['source_kps'][:batch['n_pts'], 0]
-        batch['target_kps'][:batch['n_pts'], 0] = batch['target_image'].shape[1] - batch['target_kps'][:batch['n_pts'], 0]
+        batch['source_kps'][:batch['n_pts'], 0] = batch['source_image'].shape[1] - batch['source_kps'][:batch['n_pts'],
+                                                                                   0]
+        batch['target_kps'][:batch['n_pts'], 0] = batch['target_image'].shape[1] - batch['target_kps'][:batch['n_pts'],
+                                                                                   0]
 
         batch['source_image'] = np.flip(batch['source_image'], 1)
         batch['target_image'] = np.flip(batch['target_image'], 1)
