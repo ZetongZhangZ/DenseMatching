@@ -42,7 +42,11 @@ model_type = ['GLUNet', 'GLUNet_interp',
               # 'DHPF', 'PWarpCDHPF_SS'
               ]
 pre_trained_model_types = ['static', 'dynamic', 'chairs_things', 'chairs_things_ft_sintel', 'megadepth',
-                           'megadepth_stage1', 'pfpascal', 'spair']
+                           'megadepth_stage1', 'pfpascal', 'spair','ndf_from_WS_pfpascal',
+                           'ndf_from_SS_pfpascal','ndf_from_imagenet_pretrained',
+                           'ndf_from_WS_pfpascal_cropped',
+                           'ndf_from_SS_pfpascal_cropped', 'ndf_from_imagenet_pretrained_cropped'
+                           ]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
