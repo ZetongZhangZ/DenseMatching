@@ -19,12 +19,25 @@ def read_mat(path, obj_name):
 
     return mat_obj
 
+
+def crop_image(img, bbox, enlarge=20):
+    h, w = img.shape[:2]
+    y_min = max(bbox[1].int() - enlarge, 0)
+    y_max = min(bbox[3].int() + enlarge, h)
+    x_min = max(bbox[0].int() - enlarge, 0)
+    x_max = min(bbox[2].int() + enlarge, w)
+    cropped = img[y_min:y_max, x_min:x_max]
+    bbox_new = torch.tensor([bbox[0] - x_min, bbox[1] - y_min, x_max - bbox[2], y_max - bbox[3]]).float()
+    return cropped,bbox_new
+
+
 class NDFDataset(SemanticKeypointsDataset):
     """
     Proposal Flow image pair dataset (PF-Pascal).
     There is a certain number of pairs per category and the number of keypoints per pair also varies
     """
-    def __init__(self, root, split, thres='img', annotated = False, source_image_transform=None,
+
+    def __init__(self, root, split, thres='img', annotated=False, pre_cropped=True, source_image_transform=None,
                  target_image_transform=None, flow_transform=None, output_image_size=None, training_cfg=None):
         """
         Args:
@@ -46,14 +59,14 @@ class NDFDataset(SemanticKeypointsDataset):
             target_kps
         """
         super(NDFDataset, self).__init__('ndf', root, thres, split, source_image_transform,
-                                              target_image_transform, flow_transform, training_cfg=training_cfg,
-                                              output_image_size=output_image_size)
+                                         target_image_transform, flow_transform, training_cfg=training_cfg,
+                                         output_image_size=output_image_size)
 
         # TODO: generate csv for training
         self.train_data = pd.read_csv(self.spt_path)
         self.src_imnames = np.array(self.train_data.iloc[:, 0])
         self.trg_imnames = np.array(self.train_data.iloc[:, 1])
-        self.cls = ['mug','bowl','bottle']
+        self.cls = ['mug', 'bowl', 'bottle']
         self.cls_ids = self.train_data.iloc[:, 2].values.astype('int') - 1
 
         # if split == 'train':
@@ -62,10 +75,11 @@ class NDFDataset(SemanticKeypointsDataset):
         self.trg_kps = []
         self.src_bbox = []
         self.trg_bbox = []
-        self.annotated = annotated # whether we have keypoint info
+        self.annotated = annotated  # whether we have keypoint info
+        self.pre_cropped = pre_cropped  # whether to crop image first
 
         for src_imname, trg_imname, cls in zip(self.src_imnames, self.trg_imnames, self.cls_ids):
-            src_mask_path = os.path.join(self.ann_path,os.path.basename(src_imname).replace('rgb','mask'))
+            src_mask_path = os.path.join(self.ann_path, os.path.basename(src_imname).replace('rgb', 'mask'))
             trg_mask_path = os.path.join(self.ann_path, os.path.basename(trg_imname).replace('rgb', 'mask'))
             src_bbox = self.get_bbox_from_mask(src_mask_path)
             trg_bbox = self.get_bbox_from_mask(trg_mask_path)
@@ -125,6 +139,20 @@ class NDFDataset(SemanticKeypointsDataset):
         batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'])
         batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'])
 
+        if self.pre_cropped:
+            batch['source_image'],batch['src_bbox'] = \
+                crop_image(batch['source_image'],batch['src_bbox'])
+            batch['source_image'],batch['trg_bbox'] = \
+                crop_image(batch['target_image'],batch['trg_bbox'])
+            batch['source_image_size'] = np.array(batch['source_image'].shape[:2])  # h,w
+            batch['target_image_size'] = np.array(batch['target_image'].shape[:2])
+
+            # TODO: how to modify batch['src_imsize_ori'] and batch['trgs_imsize_ori']
+
+            if self.annotated:
+                raise NotImplementedError
+
+
         if self.split != 'test':
 
             if self.training_cfg['augment_with_crop']:
@@ -137,14 +165,13 @@ class NDFDataset(SemanticKeypointsDataset):
                         batch['target_image'], batch['target_kps'].clone(), batch['trg_bbox'].int(),
                         size=self.training_cfg['crop_size'], p=self.training_cfg['proba_of_crop'])
                 else:
-                    batch['source_image'],batch['src_bbox'] = random_crop_image(
-                        batch['source_image'],batch['src_bbox'].int(),size=self.training_cfg['crop_size'],
+                    batch['source_image'], batch['src_bbox'] = random_crop_image(
+                        batch['source_image'], batch['src_bbox'].int(), size=self.training_cfg['crop_size'],
                         p=self.training_cfg['proba_of_crop'])
 
-                    batch['target_image'],batch['trg_bbox'] = random_crop_image(
-                        batch['target_image'], batch['trg_bbox'].int(),size=self.training_cfg['crop_size'],
+                    batch['target_image'], batch['trg_bbox'] = random_crop_image(
+                        batch['target_image'], batch['trg_bbox'].int(), size=self.training_cfg['crop_size'],
                         p=self.training_cfg['proba_of_crop'])
-
 
             if self.training_cfg['augment_with_flip']:
                 if self.annotated:
@@ -239,8 +266,8 @@ class NDFDataset(SemanticKeypointsDataset):
                 bbox[1::2] *= (float(output_image_size[0]) / float(original_image_size[0]))
         return bbox
 
-    def get_bbox_from_mask(self,mask_path):
-        mask = cv2.imread(mask_path,cv2.IMREAD_GRAYSCALE)
+    def get_bbox_from_mask(self, mask_path):
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         object_mask = np.bitwise_not(np.isin(mask, [0, 1, 2, 255]))
         h, w = mask.shape
         indices = np.argwhere(object_mask)
@@ -248,7 +275,7 @@ class NDFDataset(SemanticKeypointsDataset):
         y_max = min(max(indices[:, 0]), h)
         x_min = max(min(indices[:, 1]), 0)
         x_max = min(max(indices[:, 1]), w)
-        bbox = torch.tensor([x_min,y_min,x_max,y_max]).float()
+        bbox = torch.tensor([x_min, y_min, x_max, y_max]).float()
         return bbox
 
     def horizontal_flip_img_bbox(self, batch):
