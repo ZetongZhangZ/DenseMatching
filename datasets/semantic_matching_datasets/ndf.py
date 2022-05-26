@@ -19,7 +19,6 @@ def read_mat(path, obj_name):
 
     return mat_obj
 
-
 class NDFDataset(SemanticKeypointsDataset):
     """
     Proposal Flow image pair dataset (PF-Pascal).
@@ -63,7 +62,15 @@ class NDFDataset(SemanticKeypointsDataset):
         self.trg_kps = []
         self.src_bbox = []
         self.trg_bbox = []
-        self.annotated = annotated
+        self.annotated = annotated # whether we have keypoint info
+
+        for src_imname, trg_imname, cls in zip(self.src_imnames, self.trg_imnames, self.cls_ids):
+            src_mask_path = os.path.join(self.ann_path,os.path.basename(src_imname).replace('rgb','mask'))
+            trg_mask_path = os.path.join(self.ann_path, os.path.basename(trg_imname).replace('rgb', 'mask'))
+            src_bbox = self.get_bbox_from_mask(src_mask_path)
+            trg_bbox = self.get_bbox_from_mask(trg_mask_path)
+            self.src_bbox.append(src_bbox)
+            self.trg_bbox.append(trg_bbox)
 
         if self.annotated:
             # here reads bounding box and keypoints information from annotation files. Also in most of the csv files.
@@ -75,8 +82,6 @@ class NDFDataset(SemanticKeypointsDataset):
 
                 src_kp = torch.tensor(read_mat(src_anns, 'kps')).float()
                 trg_kp = torch.tensor(read_mat(trg_anns, 'kps')).float()
-                src_box = torch.tensor(read_mat(src_anns, 'bbox')[0].astype(float))
-                trg_box = torch.tensor(read_mat(trg_anns, 'bbox')[0].astype(float))
 
                 src_kps = []
                 trg_kps = []
@@ -88,8 +93,6 @@ class NDFDataset(SemanticKeypointsDataset):
                         trg_kps.append(trg_kk)
                 self.src_kps.append(torch.stack(src_kps).t())
                 self.trg_kps.append(torch.stack(trg_kps).t())
-                self.src_bbox.append(src_box)
-                self.trg_bbox.append(trg_box)
 
         # self._imnames are basenames
         self.src_imnames = list(map(lambda x: os.path.basename(x), self.src_imnames))
@@ -119,9 +122,8 @@ class NDFDataset(SemanticKeypointsDataset):
         batch = super(NDFDataset, self).__getitem__(idx)
 
         batch['sparse'] = True
-        if self.annotated:
-            batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'])
-            batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'])
+        batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'])
+        batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'])
 
         if self.split != 'test':
 
@@ -135,12 +137,12 @@ class NDFDataset(SemanticKeypointsDataset):
                         batch['target_image'], batch['target_kps'].clone(), batch['trg_bbox'].int(),
                         size=self.training_cfg['crop_size'], p=self.training_cfg['proba_of_crop'])
                 else:
-                    batch['source_image'] = random_crop_image(
-                        batch['source_image'],size=self.training_cfg['crop_size'],
+                    batch['source_image'],batch['src_bbox'] = random_crop_image(
+                        batch['source_image'],batch['src_bbox'].int(),size=self.training_cfg['crop_size'],
                         p=self.training_cfg['proba_of_crop'])
 
-                    batch['target_image'] = random_crop_image(
-                        batch['target_image'], size=self.training_cfg['crop_size'],
+                    batch['target_image'],batch['trg_bbox'] = random_crop_image(
+                        batch['target_image'], batch['trg_bbox'].int(),size=self.training_cfg['crop_size'],
                         p=self.training_cfg['proba_of_crop'])
 
 
@@ -156,7 +158,7 @@ class NDFDataset(SemanticKeypointsDataset):
                             batch['target_image'], batch['trg_bbox'], batch['target_kps'] = self.horizontal_flip_img(
                                 batch['target_image'], batch['trg_bbox'], batch['target_kps'])
                 else:
-                    self.horizontal_flip_only_imgs(batch)
+                    self.horizontal_flip_img_bbox(batch)
 
             '''
             # Horizontal flipping of both images and key-points during training
@@ -170,11 +172,10 @@ class NDFDataset(SemanticKeypointsDataset):
             batch = self.recover_image_pair_for_training(batch) if self.annotated \
                 else self.recover_image_pair_for_training_only_image(batch)
 
-            if self.annotated:
-                batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'],
-                                                  output_image_size=self.training_cfg['output_image_size'])
-                batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'],
-                                                  output_image_size=self.training_cfg['output_image_size'])
+            batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'],
+                                              output_image_size=self.training_cfg['output_image_size'])
+            batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'],
+                                              output_image_size=self.training_cfg['output_image_size'])
 
             batch['pckthres'] = self.get_pckthres(batch, batch['source_image_size'])
 
@@ -199,11 +200,10 @@ class NDFDataset(SemanticKeypointsDataset):
                 batch['mask_zero_borders'] = mask_valid
 
         else:
-            if self.annotated:
-                batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'],
-                                                  output_image_size=self.output_image_size)
-                batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'],
-                                                  output_image_size=self.output_image_size)
+            batch['src_bbox'] = self.get_bbox(self.src_bbox, idx, batch['src_imsize_ori'],
+                                              output_image_size=self.output_image_size)
+            batch['trg_bbox'] = self.get_bbox(self.trg_bbox, idx, batch['trg_imsize_ori'],
+                                              output_image_size=self.output_image_size)
 
             batch['pckthres'] = self.get_pckthres(batch, batch['source_image_size'])
 
@@ -239,7 +239,27 @@ class NDFDataset(SemanticKeypointsDataset):
                 bbox[1::2] *= (float(output_image_size[0]) / float(original_image_size[0]))
         return bbox
 
-    def horizontal_flip_only_imgs(self, batch):
+    def get_bbox_from_mask(self,mask_path):
+        mask = cv2.imread(mask_path,cv2.IMREAD_GRAYSCALE)
+        object_mask = np.bitwise_not(np.isin(mask, [0, 1, 2, 255]))
+        h, w = mask.shape
+        indices = np.argwhere(object_mask)
+        y_min = max(min(indices[:, 0]), 0)
+        y_max = min(max(indices[:, 0]), h)
+        x_min = max(min(indices[:, 1]), 0)
+        x_max = min(max(indices[:, 1]), w)
+        bbox = torch.tensor([x_min,y_min,x_max,y_max]).float()
+        return bbox
+
+    def horizontal_flip_img_bbox(self, batch):
+        tmp = batch['src_bbox'][0].clone()
+        batch['src_bbox'][0] = batch['source_image'].shape[1] - batch['src_bbox'][2]
+        batch['src_bbox'][2] = batch['source_image'].shape[1] - tmp
+
+        tmp = batch['trg_bbox'][0].clone()
+        batch['trg_bbox'][0] = batch['target_image'].shape[1] - batch['trg_bbox'][2]
+        batch['trg_bbox'][2] = batch['target_image'].shape[1] - tmp
+
         batch['source_image'] = np.flip(batch['source_image'], 1)
         batch['target_image'] = np.flip(batch['target_image'], 1)
 

@@ -73,7 +73,7 @@ def random_crop(img, kps, bbox, size=(256, 256), p=0.5):
 
 
 # add for ndf
-def resize_image(img, size=(256, 256)):
+def resize_image(img, bbox, size=(256, 256)):
     """
     Args:
         img: HxWx3, numpy array
@@ -84,10 +84,14 @@ def resize_image(img, size=(256, 256)):
     h, w = img.shape[:2]
     resized_img = cv2.resize(img, dsize=(size[1], size[0]), interpolation=cv2.INTER_LINEAR)
 
-    return resized_img
+    resized_bbx = bbox.clone()
+    resized_bbx[0::2] = resized_bbx[0::2].float() * size[1] / w
+    resized_bbx[1::2] = resized_bbx[1::2].float() * size[0] / h
+
+    return resized_img,resized_bbx
 
 
-def random_crop_image(img, size=(256, 256), p=0.5):
+def random_crop_image(img, bbox, size=(256, 256), p=0.5):
     """
     Args:
         img: HxWx3, numpy array
@@ -97,23 +101,27 @@ def random_crop_image(img, size=(256, 256), p=0.5):
 
     """
     if random.uniform(0, 1) > p:
-        return resize_image(img, size)
+        return resize_image(img, bbox, size)
 
     h, w = img.shape[:2]
 
-    # we don't have bounding box, by default set the central region with length of 1/3 of the original
-    left = random.randint(0, int(w/3))
-    top = random.randint(0, int(h/3))
-    height = random.randint(int(2*h/3), h) - top
-    width = random.randint(int(2*w/3), w) - left
+    left = random.randint(0, max(0, bbox[0]))
+    top = random.randint(0, max(0, bbox[1]))
+    height = random.randint(min(bbox[3], h), h) - top
+    width = random.randint(min(bbox[2], w), w) - left
 
     try:
         resized_img = img[top: top + height, left: left + width]
         resized_img = cv2.resize(resized_img, dsize=(size[1], size[0]), interpolation=cv2.INTER_LINEAR)
+
+        resized_bbx = bbox.clone()
+        resized_bbx[0::2] = (bbox[0::2] - left) * (size[1] / width)
+        resized_bbx[1::2] = (bbox[1::2] - top) * (size[0] / height)
     except:
         resized_img = img
+        resized_bbx = bbox
 
-    return resized_img
+    return resized_img,resized_bbx
 
 
 class SemanticKeypointsDataset(Dataset):
@@ -150,7 +158,7 @@ class SemanticKeypointsDataset(Dataset):
             'ndf': (os.path.basename(root),
                     '_pairs_ndf.csv',
                     'images',
-                    '',
+                    'masks',
                     'img'),
         }
 

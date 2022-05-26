@@ -11,7 +11,7 @@ from shutil import copyfile
 from datetime import date
 
 
-def run_training(train_module, train_name, seed, cudnn_benchmark=True,checkpoint = None):
+def run_training(train_module, train_name, seed, cudnn_benchmark=True,checkpoint = None,exp_name = ''):
     """Run a train scripts in train_settings.
     args:
         train_module: Name of module in the "train_settings/" folder.
@@ -42,12 +42,15 @@ def run_training(train_module, train_name, seed, cudnn_benchmark=True,checkpoint
 
     # will save the checkpoints there
     folder = settings.project_path + '_' + checkpoint if checkpoint else settings.project_path
+    folder += exp_name
+
     save_dir = os.path.join(settings.env.workspace_dir, folder)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     copyfile(settings.project_path + '.py', os.path.join(save_dir, settings.script_name + '.py'))
 
     settings.project_path += '_' + checkpoint if checkpoint else ''
+    settings.project_path += exp_name
 
     expr_module = importlib.import_module('train_settings.{}.{}'.format(train_module.replace('/', '.'),
                                                                         train_name.replace('/', '.')))
@@ -65,6 +68,7 @@ def main():
     parser.add_argument('--seed', type=int, default=1992, help='Pseudo-RNG seed')
     parser.add_argument('--checkpoint', default = None, choices = ['SS','WS',None],
                         help = 'which checkpoint to load')
+    parser.add_argument('--exp_name', type = str, default = '')
     args = parser.parse_args()
 
     # args.seed = random.randint(0, 3000000)
@@ -76,7 +80,7 @@ def main():
     torch.cuda.manual_seed(args.seed)
 
     run_training(args.train_module, args.train_name, cudnn_benchmark=args.cudnn_benchmark,
-                 seed=args.seed, checkpoint = args.checkpoint)
+                 seed=args.seed, checkpoint = args.checkpoint, exp_name = args.exp_name)
 
 
 if __name__ == '__main__':

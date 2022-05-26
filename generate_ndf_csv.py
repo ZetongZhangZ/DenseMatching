@@ -9,9 +9,14 @@ image_folder = '../pwarpc_generate_data/train'
 classes = ['bowl','mug','bottle']
 new_datadir = 'data/ndf_simulator_images'
 new_image_folder = os.path.join(new_datadir,'images')
+new_mask_folder = os.path.join(new_datadir,'masks')
 csv_suffix = '_pairs_ndf.csv'
+
 if not os.path.exists(new_image_folder):
     os.makedirs(new_image_folder,exist_ok = True)
+if not os.path.exists(new_mask_folder):
+    os.makedirs(new_mask_folder,exist_ok = True)
+
 
 df = pd.DataFrame(columns = ['source_image','target_image','class'])
 
@@ -23,6 +28,12 @@ for i,cls in enumerate(classes):
         img_file = os.path.basename(img_path)
         new_img_path = os.path.join(new_image_folder,img_file)
         shutil.copyfile(img_path,new_img_path)
+
+        mask_file = img_file.replace('rgb','mask')
+        mask_path = img_path.replace('rgb','mask')
+        new_mask_path = os.path.join(new_mask_folder, mask_file)
+        shutil.copyfile(mask_path,new_mask_path)
+
         camera_id = img_file.split('rgb')[0][-1]
         count += 1
         if camera_id in current_dict.keys():
