@@ -45,8 +45,9 @@ pre_trained_model_types = ['static', 'dynamic', 'chairs_things', 'chairs_things_
                            'megadepth_stage1', 'pfpascal', 'spair','ndf_from_WS_pfpascal',
                            'ndf_from_SS_pfpascal','ndf_from_imagenet_pretrained',
                            'ndf_from_WS_pfpascal_cropped',
-                           'ndf_from_SS_pfpascal_cropped', 'ndf_from_imagenet_pretrained_cropped'
-                           ]
+                           'ndf_from_SS_pfpascal_cropped', 'ndf_from_imagenet_pretrained_cropped',
+                           'ndf_from_WS_pfpascal_precrop',
+                           'ndf_from_SS_pfpascal_precrop', 'ndf_from_imagenet_pretrained_precrop']
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
