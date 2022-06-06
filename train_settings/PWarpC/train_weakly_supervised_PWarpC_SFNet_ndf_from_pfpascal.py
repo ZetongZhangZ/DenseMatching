@@ -90,13 +90,15 @@ def run(settings):
                   'pad_to_same_shape': False, 'output_flow_size': [settings.resizing_size, settings.resizing_size]}
     train_dataset = NDFDataset(root=settings.env.ndf, split='train', source_image_transform=image_transforms,
                                     target_image_transform=image_transforms, flow_transform=flow_transform,
-                                    training_cfg=pascal_cfg,annotated=settings.annotated)
+                                    training_cfg=pascal_cfg,annotated=settings.annotated,
+                               pre_cropped=settings.pre_crop,single_cls=settings.single_cls)
     
     pascal_cfg['augment_with_crop'] = False
     pascal_cfg['augment_with_flip'] = False
     val_dataset = NDFDataset(root=settings.env.ndf, split='val', source_image_transform=image_transforms,
                                   target_image_transform=image_transforms, flow_transform=flow_transform,
-                                  training_cfg=pascal_cfg,annotated=settings.annotated)
+                                  training_cfg=pascal_cfg,annotated=settings.annotated,
+                             pre_cropped=settings.pre_crop,single_cls=settings.single_cls)
 
     # 2. Define dataloaders
     train_loader = Loader('train', train_dataset, batch_size=settings.batch_size, shuffle=True,

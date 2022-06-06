@@ -11,7 +11,7 @@ from shutil import copyfile
 from datetime import date
 
 
-def run_training(train_module, train_name, seed, cudnn_benchmark=True,checkpoint = None,exp_name = ''):
+def run_training(train_module, train_name, seed, cudnn_benchmark=True,custom_setting = None):
     """Run a train scripts in train_settings.
     args:
         train_module: Name of module in the "train_settings/" folder.
@@ -36,13 +36,24 @@ def run_training(train_module, train_name, seed, cudnn_benchmark=True,checkpoint
 
     settings.seed = seed
 
+    if custom_setting is not None:
+        checkpoint = custom_setting.checkpoint
+        exp_name = custom_setting.exp_name
+        settings.single_cls = custom_setting.single_cls
+        settings.pre_crop = custom_setting.pre_crop
+    else:
+        checkpoint = None
+        exp_name = ''
+        settings.single_cls = None
+        settings.pre_crop = None
+
     # pretrained checkpoint path
     settings.checkpoint_path = f'pre_trained_models/PWarpCSFNet_{checkpoint}_pfpascal.pth.tar' \
         if checkpoint else None
 
     # will save the checkpoints there
     folder = settings.project_path + '_' + checkpoint if checkpoint else settings.project_path
-    folder += exp_name
+    folder += '_' + exp_name
 
     save_dir = os.path.join(settings.env.workspace_dir, folder)
     if not os.path.exists(save_dir):
@@ -50,7 +61,7 @@ def run_training(train_module, train_name, seed, cudnn_benchmark=True,checkpoint
     copyfile(settings.project_path + '.py', os.path.join(save_dir, settings.script_name + '.py'))
 
     settings.project_path += '_' + checkpoint if checkpoint else ''
-    settings.project_path += exp_name
+    settings.project_path += '_' + exp_name
 
     expr_module = importlib.import_module('train_settings.{}.{}'.format(train_module.replace('/', '.'),
                                                                         train_name.replace('/', '.')))
@@ -69,6 +80,8 @@ def main():
     parser.add_argument('--checkpoint', default = None, choices = ['SS','WS',None],
                         help = 'which checkpoint to load')
     parser.add_argument('--exp_name', type = str, default = '')
+    parser.add_argument('--single_cls', type=str, default=None)
+    parser.add_argument('--pre_crop', default = False, action='store_true')
     args = parser.parse_args()
 
     # args.seed = random.randint(0, 3000000)
@@ -79,8 +92,9 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
+
     run_training(args.train_module, args.train_name, cudnn_benchmark=args.cudnn_benchmark,
-                 seed=args.seed, checkpoint = args.checkpoint, exp_name = args.exp_name)
+                 seed=args.seed, custom_setting=args)
 
 
 if __name__ == '__main__':

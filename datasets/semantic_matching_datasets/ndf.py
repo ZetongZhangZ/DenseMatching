@@ -4,6 +4,7 @@ import torch
 import cv2
 import pandas as pd
 import numpy as np
+
 from datasets.util import pad_to_same_shape
 from .semantic_keypoints_datasets import SemanticKeypointsDataset, random_crop, random_crop_image
 from ..util import pad_to_same_shape, pad_to_size, resize_keeping_aspect_ratio
@@ -38,7 +39,8 @@ class NDFDataset(SemanticKeypointsDataset):
     """
 
     def __init__(self, root, split, thres='img', annotated=False, pre_cropped=True, source_image_transform=None,
-                 target_image_transform=None, flow_transform=None, output_image_size=None, training_cfg=None):
+                 target_image_transform=None, flow_transform=None, output_image_size=None, training_cfg=None,
+                 single_cls = None):
         """
         Args:
             root:
@@ -66,8 +68,18 @@ class NDFDataset(SemanticKeypointsDataset):
         self.train_data = pd.read_csv(self.spt_path)
         self.src_imnames = np.array(self.train_data.iloc[:, 0])
         self.trg_imnames = np.array(self.train_data.iloc[:, 1])
-        self.cls = ['mug', 'bowl', 'bottle']
+        self.cls = ['bowl','mug','bottle']
         self.cls_ids = self.train_data.iloc[:, 2].values.astype('int') - 1
+
+        if single_cls:
+            cls_id = np.argwhere(np.array(self.cls) == single_cls).squeeze()
+            print('Chosen class id:', cls_id)
+            cls_mask = self.cls_ids == cls_id
+            self.src_imnames = self.src_imnames[cls_mask]
+            self.trg_imnames = self.trg_imnames[cls_mask]
+            print('Chosen class size', len(self.src_imnames))
+            self.cls_ids = self.cls_ids[cls_mask]
+
 
         # if split == 'train':
         #     self.flip = self.train_data.iloc[:, 3].values.astype('int') # seems useless
@@ -118,6 +130,9 @@ class NDFDataset(SemanticKeypointsDataset):
                 output_image_size = (output_image_size, output_image_size)
         self.output_image_size = output_image_size
 
+    def __len__(self):
+        return len(self.src_imnames)
+
     def __getitem__(self, idx):
         """
         Args:
@@ -148,6 +163,7 @@ class NDFDataset(SemanticKeypointsDataset):
             batch['target_image_size'] = np.array(batch['target_image'].shape[:2])
 
             # TODO: how to modify batch['src_imsize_ori'] and batch['trgs_imsize_ori']
+            # but it looks useless, so ignore it for now
 
             if self.annotated:
                 raise NotImplementedError
